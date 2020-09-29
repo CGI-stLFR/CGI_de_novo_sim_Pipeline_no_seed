@@ -44,7 +44,7 @@ rule interleave_fastqs:
     input:
         expand("{sample}", sample=config['samples']['fastq'])
     output:
-        "sim_read_interleaved.fq.gz"
+        "sim_reads_interleaved.fq.gz"
     params:
         interleave_fastq = config['software']['interleave_fastq']
     shell:
@@ -53,7 +53,7 @@ rule interleave_fastqs:
 # create unitigs
 rule run_bcalm:
     input:
-        "sim_read_interleaved.fq.gz"
+        "sim_reads_interleaved.fq.gz"
     output:
         "Assembly/reads.unitigs.fa"
     params:
@@ -101,7 +101,7 @@ rule assign_reads_to_unitigs:
         fasta = "Assembly/reads.unitigs.fa",
         fai = "Assembly/reads.unitigs.fa.fai",
         bwt = "Assembly/reads.unitigs.fa.bwt",
-        reads = "atropos_interleaved.fq.gz"
+        reads = "sim_reads_interleaved.fq.gz"
     output:
         "Assembly/aligned.bam"
     params:
@@ -132,7 +132,7 @@ rule assign_reads_to_unitigs:
 
 # return seed sizes in appropriate format
 def get_seed_sizes():
-    return ",".join(config['params']['seed_sizes'])
+    return ",".join([str(x) for x in config['params']['seed_sizes']])
 
 
 # perform de novo assembly
@@ -145,7 +145,6 @@ rule de_novo_assembly:
         phase_contigs = expand("Assembly/LinkedReads.seed.phase_{hap}.fasta", hap=[0,1])
     params:
         ksize = config['params']['ksize'],
-        trace_size = config['params']['trace_size'],
         read_len = config['params']['read_len'],
         seed_sizes = get_seed_sizes()
     threads:
@@ -160,7 +159,6 @@ rule de_novo_assembly:
             "--untig_kmer_size {params.ksize} "
             "--contig_output Assembly/LinkedRead.seed "
             "--seed_sizes {params.seed_sizes} "
-            "--max_tracegraph_size {params.trace_size} "
             "--read_len {params.read_len} > {log} 2>&1"
 
 
