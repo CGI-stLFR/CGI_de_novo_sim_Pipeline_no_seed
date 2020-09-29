@@ -10,6 +10,8 @@ samples:
     # this is the base path to the truth haplotype fastas
     sim_ref_stem: "/research/rv-02/home/eanderson/Simulated_Data_Wenlan/Simulated_Ref/Fasta"
 software:
+    # path to interleave-fastq
+    interleave_fastq: "/home/eanderson/bin/interleave-fastq"
     # path to minimap
     minimap: "/home/eanderson/minimap2-2.16_x64-linux/minimap2"
     # path to quast
@@ -37,6 +39,8 @@ software:
     # path to scaffolding script
     scaffold: "/research/rv-02/home/eanderson/CGI_de_novo_sim_Pipeline/scaffold_contigs.py"
 params:
+    # a fast local disk for sentieon
+    tmp_dir: "/dev/shm"
     # platform for RG in bam
     platform: "bgi-seq"
     # seed lib path
@@ -45,10 +49,16 @@ params:
     sentieon_install: "/opt/sentieon-genomics-cgv0.5-201911"
     # path to licensing server
     sentieon_license: "sentieon-license-server.completegenomics.com:8991"
-    # range barcode param
-    range_barcode: 5000
-    # min jaccard index param
-    min_jaccard: 0.02
+    # chunk param
+    chunk: 10000000
+    # abundance minimum paramater
+    amin: 6
+    # kmer size parameter
+    ksize: 61
+    # seed sizes parameter
+    seed_sizes: [1001, 501]
+    # tracegraph size
+    tracegraph_size: 500
     # min contig length for quast
     min_contig: 10000
     # read length, update appropriately

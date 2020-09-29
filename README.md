@@ -1,6 +1,7 @@
 # CGI\_de\_novo\_sim\_Pipeline
 
 This pipeline is for Sentieon's assembly software for use with simulated data.
+This pipeline uses Sentieon's software designed for use without a seed library.
 
 ## Directory Contents
 

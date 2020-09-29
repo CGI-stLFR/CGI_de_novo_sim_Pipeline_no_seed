@@ -39,172 +39,135 @@ rule run_all:
         "Contig_Binning/SV_Calling/SV_Comparison_Diploid/summary.txt"
 
 
-# Rule for read clustering
-# mapping reads ot the seed library
-rule read_clustering:
+# interleave_fastqs
+rule interleave_fastqs:
     input:
         expand("{sample}", sample=config['samples']['fastq'])
     output:
-        "Assembly/cg50X_SentieonIter0.bam"
-    log:
-        "Assembly/run.log"
+        "sim_read_interleaved.fq.gz"
+    params:
+        interleave_fastq = config['software']['interleave_fastq']
+    shell:
+        "{params.interleave_fastq} {input} | gzip -c > {output}"
+
+# create unitigs
+rule run_bcalm:
+    input:
+        "sim_read_interleaved.fq.gz"
+    output:
+        "Assembly/reads.unitigs.fa"
+    params:
+        kmer_size = config['params']['ksize'],
+        a_min = config['params']['amin']
     threads:
         config['threads']['assembly']
+    log:
+        "Assembly/bcalm.err"
+    shell:
+        "$SENTIEON_INSTALL/bin/sentieon bcalm "
+            "-kmer-size {params.kmer_size} "
+            "-abundance-min {params.a_min} "
+            "-in {input} "
+            "-out Assembly/reads "
+            "-nb-cores {threads} > {log} 2>&1"
+
+
+# index unitigs with samtools
+rule index_unitigs_samtools:
+    input:
+        "Assembly/reads.unitigs.fa"
+    output:
+        "Assembly/reads.unitigs.fa.fai"
+    shell:
+        "samtools faidx {input}"
+
+
+# index unitigs with bwa
+rule index_unitigs_bwa:
+    input:
+        "Assembly/reads.unitigs.fa"
+    output:
+        "Assembly/reads.unitigs.fa.bwt"
+    log:
+        "Assembly/bwa.index.err"
+    shell:
+        "$SENTIEON_INSTALL/bin/sentieon bwa index {input} > {log} 2>&1"
+
+
+# assign reads to unitigs
+# -C will append fq comments to the outputs, -p handles interleaved reads
+rule assign_reads_to_unitigs:
+    input:
+        fasta = "Assembly/reads.unitigs.fa",
+        fai = "Assembly/reads.unitigs.fa.fai",
+        bwt = "Assembly/reads.unitigs.fa.bwt",
+        reads = "atropos_interleaved.fq.gz"
+    output:
+        "Assembly/aligned.bam"
     params:
-        seed_lib = config['params']['seed_lib'],
+        chunk = config['params']['chunk'],
+        ksize = config['params']['ksize'],
         readgroup = r'@RG\tID:{0}\tSM:{0}\tPL:{1}'.format(config['samples']['date'],
                                                           config['params']['platform'])
-    shell:
-        "($SENTIEON_INSTALL/bin/sentieon bwa mem -R '{params.readgroup}' "
-            "-M -t {threads} -K 10000000 -Y {params.seed_lib} {input} || echo -n 'BWA error') | "
-            "extract | "
-            "$SENTIEON_INSTALL/bin/sentieon util sort -t {threads} -o {output} --sam2bam - &> {log}"
-
-
-# Sentieon's software uses a pcr indel model to limit false positives
-rule indel_modeling:
-    input:
-        "Assembly/cg50X_SentieonIter0.bam"
-    output:
-        "Assembly/LinkedReads.pcr.model"
     log:
-        "Assembly/LinkedReadsRepeatStat.log"
+        bwa = "Assembly/bwa.reads.err",
+        group = "Assembly/group.reads.err"
     threads:
         config['threads']['assembly']
+    shell:
+        "$SENTIEON_INSTALL/bin/sentieon bwa "
+            "-R {params.readgroup} "
+            "-t {threads} "
+            "-K {params.chunk} "
+            "-k {params.ksize} "
+            "-x unitig "
+            "-p {input.fasta} "
+            "{input.reads} 2> {log.bwa} | "
+        "extract | "
+        "ASAN_OPTIONS=detect_leaks=0 $SENTIEON_INSTALL/bin/sentieon driver "
+            "-t {threads} "
+            "--algo LinkedReadsDeNovo group "
+            "{output} - > {log.group} 2>&1"
+
+
+# return seed sizes in appropriate format
+def get_seed_sizes():
+    return ",".join(config['params']['seed_sizes'])
+
+
+# perform de novo assembly
+rule de_novo_assembly:
+    input:
+        bam = "Assembly/aligned.bam",
+        fasta = "Assembly/reads.unitigs.fa"
+    output:
+        contigs = expand("Assembly/LinkedReads.seed_{hap}.fasta", hap=[0,1]),
+        phase_contigs = expand("Assembly/LinkedReads.seed.phase_{hap}.fasta", hap=[0,1])
     params:
-        seed_lib = config['params']['seed_lib']
-    shell:
-        "$SENTIEON_INSTALL/bin/sentieon driver -t {threads} "
-            "-r {params.seed_lib} -i {input} "
-            "--algo RepeatStat {output} &> {log}"
-
-
-# First assembly step
-rule linked_reads_assemble:
-    input:
-        bam = "Assembly/cg50X_SentieonIter0.bam",
-        model = "Assembly/LinkedReads.pcr.model"
-    output:
-        bam = "Assembly/LinkedReads.hap.bam"
-    log:
-        "Assembly/LinkedReadsAssemble.log"
+        ksize = config['params']['ksize'],
+        trace_size = config['params']['trace_size'],
+        read_len = config['params']['read_len'],
+        seed_sizes = get_seed_sizes()
     threads:
         config['threads']['assembly']
-    params:
-        seed_lib = config['params']['seed_lib'],
-        read_len = config['params']['read_len']
-    shell:
-        "$SENTIEON_INSTALL/bin/sentieon driver -t {threads} "
-            "-r {params.seed_lib} -i {input.bam} "
-            "--algo LinkedReadsAssemble --assemble_read_len {params.read_len} "
-            "--pcr_indel_model {input.model} "
-            "--coalign_hap 1 --min_map_qual 1 "
-            "{output.bam} &> {log}"
-
-
-# First graph solving step
-rule linked_reads_solve:
-    input:
-        clusters = "Assembly/cg50X_SentieonIter0.bam",
-        bam = "Assembly/LinkedReads.hap.bam"
-    output:
-        graph = "Assembly/LinkedReads.hap.graph",
-        reads = "Assembly/LinkedReads.hap.reads",
-        filtered = "Assembly/LinkedReads.filtered.reads",
-        rescue = "Assembly/LinkedReads.rescue.data"
     log:
-        "Assembly/LinkedReadsSolve.log"
-    threads:
-        config['threads']['assembly']
-    params:
-        seed_lib = config['params']['seed_lib'],
-        range_bc = config['params']['range_barcode']
+        "Assembly/LinkedReadsSeed.log"
     shell:
-        "$SENTIEON_INSTALL/bin/sentieon driver -t {threads} "
-            "-r {params.seed_lib} -i {input.clusters} "
-            "--algo LinkedReadsSolve --hap_bam {input.bam} "
-            "--hap_graph {output.graph} --reads_in_hap {output.reads} "
-            "--reads_filtered {output.filtered} "
-            "--rescue_data {output.rescue} "
-            "--range_barcode {params.range_bc} &> {log}"
-
-
-# rescue step for unassembled reads and contigs
-rule linked_reads_rescue:
-    input:
-        bam = "Assembly/cg50X_SentieonIter0.bam",
-        rescue = "Assembly/LinkedReads.rescue.data",
-        reads = "Assembly/LinkedReads.hap.reads",
-        filtered = "Assembly/LinkedReads.filtered.reads"
-    output:
-        "Assembly/LinkedReads.rescue.bam"
-    log:
-        "Assembly/LinkedReadsRescue.log"
-    threads:
-        config['threads']['assembly']
-    shell:
-        "$SENTIEON_INSTALL/bin/sentieon driver -t {threads} "
-            "-i {input.bam} --algo LinkedReadsRescue "
-            "--bam_compression 1 --rescue_data {input.rescue} "
-            "--reads_in_hap {input.reads} "
-            "--reads_filtered {input.filtered} "
-            "{output} &> {log}"
-
-
-# Second assembly step/scaffolding
-rule linked_reads_bridge:
-    input:
-        bam = "Assembly/LinkedReads.rescue.bam",
-        data = "Assembly/LinkedReads.rescue.data"
-    output:
-        "Assembly/LinkedReads.bridge.ret"
-    log:
-        "Assembly/LinkedReadsBridge.log"
-    threads:
-        config['threads']['assembly']
-    params:
-        seed_lib = config['params']['seed_lib']
-    shell:
-        "$SENTIEON_INSTALL/bin/sentieon driver -t {threads} "
-            "-r {params.seed_lib} -i {input.bam} "
-            "--algo LinkedReadsBridge --rescue_data {input.data} "
-            "{output} &> {log}"
-
-
-# Second graph solving step
-rule linked_reads_solve_2:
-    input:
-        bam = "Assembly/cg50X_SentieonIter0.bam",
-        hap = "Assembly/LinkedReads.hap.bam",
-        graph = "Assembly/LinkedReads.hap.graph",
-        bridge = "Assembly/LinkedReads.bridge.ret"
-    output:
-        contigs = expand("Assembly/LinkedReads.contig_{hap}.fasta", hap=[0,1]),
-        phase_contigs = expand("Assembly/LinkedReads.contig.phase_{hap}.fasta", hap=[0,1]),
-        barcodes = "Assembly/LinkedReads.phase.barcodes"
-    log:
-        "Assembly/LinkedReadsSolve1.log"
-    threads:
-        config['threads']['assembly']
-    params:
-        jaccard = config['params']['min_jaccard'],
-        seed_lib = config['params']['seed_lib'],
-        range_bc = config['params']['range_barcode']
-    shell:
-        "$SENTIEON_INSTALL/bin/sentieon driver -t {threads} "
-            "-r {params.seed_lib} -i {input.bam} "
-            "--algo LinkedReadsSolve --hap_bam {input.hap} "
-            "--hap_graph {input.graph} --bridge_ret {input.bridge} "
-            "--contig_output Assembly/LinkedReads.contig "
-            "--min_scaffold_jaccard {params.jaccard} "
-            "--range_barcode {params.range_bc} "
-            "--phase_barcodes {output.barcodes} &> {log}"
+        "$SENTIEON_INSTALL/bin/sentieon driver --algo LinkedReadsDeNovo trace "
+            "-t {threads} "
+            "-i {input.bam} "
+            "--bcalm_untig_graph {input.fasta} "
+            "--untig_kmer_size {params.ksize} "
+            "--contig_output Assembly/LinkedRead.seed "
+            "--seed_sizes {params.seed_sizes} "
+            "--max_tracegraph_size {params.trace_size} "
+            "--read_len {params.read_len} > {log} 2>&1"
 
 
 # run quast on contig assemblies
 rule run_quast_contigs:
     input:
-        "Assembly/LinkedReads.contig_{hap}.fasta"
+        "Assembly/LinkedReads.seed_{hap}.fasta"
     output:
         "Quast_Contigs_{hap}/quast.log"
     threads:
@@ -225,7 +188,7 @@ rule run_quast_contigs:
 # run minimap for each phase hap against truth_haps for binning
 rule run_minimap_phased_contigs:
     input:
-        fasta = "Assembly/LinkedReads.contig.phase_{hap}.fasta",
+        fasta = "Assembly/LinkedReads.seed.phase_{hap}.fasta",
         truth_fa = config['samples']['sim_ref_stem'] + "/mergeScaftig_normalized_hap{ref_hap}.fa"
     output:
         "Align_Hap{hap}_Ref{ref_hap}/hap{hap}_ref{ref_hap}.paf.gz"
@@ -244,7 +207,7 @@ rule run_minimap_phased_contigs:
 # get contig N50 using python script
 rule contig_phase_n50:
     input:
-        "Assembly/LinkedReads.contig.phase_{hap}.fasta"
+        "Assembly/LinkedReads.seed.phase_{hap}.fasta"
     output:
         "hap{hap}_phase_n50.txt"
     params:
@@ -256,7 +219,7 @@ rule contig_phase_n50:
 # bin contigs by the phase id (PID), creates temp file of results
 rule bin_by_pid:
     input:
-        input_fa = expand("Assembly/LinkedReads.contig.phase_{hap}.fasta", hap=[0,1]),
+        input_fa = expand("Assembly/LinkedReads.seed.phase_{hap}.fasta", hap=[0,1]),
         pafs = expand("Align_Hap{hap}_Ref{ref_hap}/hap{hap}_ref{ref_hap}.paf.gz",
                        hap=[0,1], ref_hap=["A", "B"])
     output:
@@ -303,7 +266,7 @@ def get_contig_hap_id(wildcards):
 rule create_subset_files:
     input:
         bin_results = "Contig_Binning/pid_binning_results.txt",
-        contig = "Assembly/LinkedReads.contig.phase_{hap}.fasta",
+        contig = "Assembly/LinkedReads.seed.phase_{hap}.fasta",
         truth_fa = config['samples']['sim_ref_stem'] + "/mergeScaftig_normalized_hap{ref_hap}.fa"
     output:
         "Contig_Binning/tmp_contigs_hap{hap}_bin{ref_hap}.txt"
@@ -320,9 +283,9 @@ rule create_subset_files:
 rule subset_bins:
     input:
         bin_results = "Contig_Binning/pid_binning_results.txt",
-        zero_contig = "Assembly/LinkedReads.contig.phase_0.fasta",
+        zero_contig = "Assembly/LinkedReads.seed.phase_0.fasta",
         zero_subfile = "Contig_Binning/tmp_contigs_hap0_bin{ref_hap}.txt",
-        one_contig = "Assembly/LinkedReads.contig.phase_1.fasta",
+        one_contig = "Assembly/LinkedReads.seed.phase_1.fasta",
         one_subfile = "Contig_Binning/tmp_contigs_hap1_bin{ref_hap}.txt"
     output:
         "Contig_Binning/binned_hap{ref_hap}_contigs.fa"
