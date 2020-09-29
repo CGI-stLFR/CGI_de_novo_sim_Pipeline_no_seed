@@ -1,0 +1,69 @@
+samples:
+    # paths to simulated FQs
+    fastq: [simulated_read1.fq, simulated_read2.fq]
+    # date, this currently doesn't do anything
+    date: "20200101"
+    # these likely don't need to be changed but provide the haplotypes
+    haps: [0, 1]
+    # these shouldn't need to be changed and provide the truth haplotypes
+    ref_haps: [A, B]
+    # this is the base path to the truth haplotype fastas
+    sim_ref_stem: "/research/rv-02/home/eanderson/Simulated_Data_Wenlan/Simulated_Ref/Fasta"
+software:
+    # path to minimap
+    minimap: "/home/eanderson/minimap2-2.16_x64-linux/minimap2"
+    # path to quast
+    quast: "/research/rv-02/home/qmao/Scripts/python_virtualenv/quast_v5/env/bin/quast.py"
+    # path to bin by pid
+    bin_by_pid: "/home-02/eanderson/Sentieon_Binning_and_Stratification/bin_by_pid.py"
+    # path to seqtk
+    seqtk: "/home/qmao/Scripts/seqtk-master/seqtk"
+    # path to seqkit
+    seqkit: "/home/eanderson/bin/seqkit"
+    # path to bedtools
+    bedtools: "/home/eanderson/bedtools2/bin/bedtools"
+    # path to csvtk
+    csvtk: "/home/eanderson/bin/csvtk"
+    # path to sam_flt
+    sam_flt: "/home/eanderson/CHM-eval/dip-call/sam-flt.js"
+    # path to vcf pait
+    vcf_pair: "/home/eanderson/CHM-eval/dip-call/vcf-pair.js"
+    # path to SV stratification script
+    strat_svs_script: "/research/rv-02/home/eanderson/CGI_de_novo_sim_Pipeline/stratification_test.py"
+    # path to htsbox
+    htsbox: "/home/eanderson/CHM-eval.kit/htsbox"
+    # path to phase block N50 script
+    phase_script: "/research/rv-02/home/eanderson/CGI_de_novo_sim_Pipeline/phase_block_n50.py"
+    # path to scaffolding script
+    scaffold: "/research/rv-02/home/eanderson/CGI_de_novo_sim_Pipeline/scaffold_contigs.py"
+params:
+    # platform for RG in bam
+    platform: "bgi-seq"
+    # seed lib path
+    seed_lib: "/research/rv-02/home/eanderson/Resources_And_DBs/Sentieon_Seed_Lib/Sentieon_DB-iter0.fa"
+    # path to sentieon install, should be updated as new software is available
+    sentieon_install: "/opt/sentieon-genomics-cgv0.5-201911"
+    # path to licensing server
+    sentieon_license: "sentieon-license-server.completegenomics.com:8991"
+    # range barcode param
+    range_barcode: 5000
+    # min jaccard index param
+    min_jaccard: 0.02
+    # min contig length for quast
+    min_contig: 10000
+    # read length, update appropriately
+    read_len: 100
+    # human reference to use, best to keep hs37d5 for stratification
+    human_ref: "/research/rv-02/home/eanderson/Resources_And_DBs/hs37d5.fa"
+    # stratification bed dir, these are specific to hg19/hs37d5 currently
+    strat_bed_dir: "/home/eanderson/Sentieon_Binning_and_Stratification/stratification_regions/"
+    # TSV of name bed pairs within the stratification bed directory
+    strat_tsv: "/home/eanderson/Sentieon_Binning_and_Stratification/ga4gh_all_coordonly_2.tsv"
+    # SV truth VCF, update if this gets changed
+    sv_truth: "/research/rv-02/home/eanderson/CGI_de_novo_sim_Pipeline/Ref_Haps_to_hs37d5/truth_contigs_phased.vcf.gz"
+threads:
+    # various thread parameters
+    # if you set snakemake -j less than these they'll be limited to the value of -j
+    minimap: 16
+    assembly: 100
+    quast: 40
