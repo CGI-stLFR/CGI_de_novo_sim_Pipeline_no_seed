@@ -4,7 +4,7 @@
 # prepend commands with export Sentieon stuff.
 
 configfile: "config.yaml"
-shell.prefix('export SENTIEON_INSTALL={}; export SENTIEON_LICENSE={}; '.format(config['params']['sentieon_install'], config['params']['sentieon_license']))
+shell.prefix('export SENTIEON_INSTALL={}; export SENTIEON_LICENSE={}; export SENTIEON_TMPDIR=/dev/shm;'.format(config['params']['sentieon_install'], config['params']['sentieon_license']))
 
 
 # Rule for run all, could be shortened with a function
@@ -107,7 +107,7 @@ rule assign_reads_to_unitigs:
     params:
         chunk = config['params']['chunk'],
         ksize = config['params']['ksize'],
-        readgroup = r'@RG\tID:{0}\tSM:{0}\tPL:{1}'.format(config['samples']['date'],
+        readgroup = r'@RG\\tID:{0}\\tSM:{0}\\tPL:{1}'.format(config['samples']['sample'],
                                                           config['params']['platform'])
     log:
         bwa = "Assembly/bwa.reads.err",
@@ -115,7 +115,7 @@ rule assign_reads_to_unitigs:
     threads:
         config['threads']['assembly']
     shell:
-        "$SENTIEON_INSTALL/bin/sentieon bwa "
+        "$SENTIEON_INSTALL/bin/sentieon bwa mem "
             "-R {params.readgroup} "
             "-t {threads} "
             "-K {params.chunk} "
@@ -152,12 +152,12 @@ rule de_novo_assembly:
     log:
         "Assembly/LinkedReadsSeed.log"
     shell:
-        "$SENTIEON_INSTALL/bin/sentieon driver --algo LinkedReadsDeNovo trace "
-            "-t {threads} "
+        "$SENTIEON_INSTALL/bin/sentieon driver -t {threads} "
+            "--algo LinkedReadsDeNovo trace "
             "-i {input.bam} "
             "--bcalm_untig_graph {input.fasta} "
             "--untig_kmer_size {params.ksize} "
-            "--contig_output Assembly/LinkedRead.seed "
+            "--contig_output Assembly/LinkedReads.seed "
             "--seed_sizes {params.seed_sizes} "
             "--read_len {params.read_len} > {log} 2>&1"
 

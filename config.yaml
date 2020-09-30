@@ -1,4 +1,6 @@
 samples:
+    # sample name
+    sample: "simlib1"
     # paths to simulated FQs
     fastq: [simulated_read1.fq, simulated_read2.fq]
     # date, this currently doesn't do anything
@@ -46,7 +48,7 @@ params:
     # seed lib path
     seed_lib: "/research/rv-02/home/eanderson/Resources_And_DBs/Sentieon_Seed_Lib/Sentieon_DB-iter0.fa"
     # path to sentieon install, should be updated as new software is available
-    sentieon_install: "/opt/sentieon-genomics-cgv0.5-201911"
+    sentieon_install: "/opt/sentieon-genomics-cgv0.6-201911"
     # path to licensing server
     sentieon_license: "sentieon-license-server.completegenomics.com:8991"
     # chunk param
